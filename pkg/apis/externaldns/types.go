@@ -86,6 +86,7 @@ type Config struct {
 	DynPassword                 string `secure:"yes"`
 	DynMinTTLSeconds            int
 	OCIConfigFile               string
+	OCIDomainMode               bool
 	InMemoryZones               []string
 	PDNSServer                  string
 	PDNSAPIKey                  string `secure:"yes"`
@@ -171,6 +172,7 @@ var defaultConfig = &Config{
 	InfobloxView:                "",
 	InfobloxMaxResults:          0,
 	OCIConfigFile:               "/etc/kubernetes/oci.yaml",
+	OCIDomainMode:               false,
 	InMemoryZones:               []string{},
 	PDNSServer:                  "http://localhost:8081",
 	PDNSAPIKey:                  "",
@@ -318,6 +320,7 @@ func (cfg *Config) ParseFlags(args []string) error {
 	app.Flag("dyn-password", "When using the Dyn provider, specify the pasword").Default("").StringVar(&cfg.DynPassword)
 	app.Flag("dyn-min-ttl", "Minimal TTL (in seconds) for records. This value will be used if the provided TTL for a service/ingress is lower than this.").IntVar(&cfg.DynMinTTLSeconds)
 	app.Flag("oci-config-file", "When using the OCI provider, specify the OCI configuration file (required when --provider=oci").Default(defaultConfig.OCIConfigFile).StringVar(&cfg.OCIConfigFile)
+	app.Flag("oci-domain-mode", "Instead of updating records at zone level, batch the updates at domain level (useful when you dont have access rights to modify zone)").Default(strconv.FormatBool(defaultConfig.OCIDomainMode)).BoolVar(&cfg.OCIDomainMode)
 	app.Flag("rcodezero-txt-encrypt", "When using the Rcodezero provider with txt registry option, set if TXT rrs are encrypted (default: false)").Default(strconv.FormatBool(defaultConfig.RcodezeroTXTEncrypt)).BoolVar(&cfg.RcodezeroTXTEncrypt)
 	app.Flag("inmemory-zone", "Provide a list of pre-configured zones for the inmemory provider; specify multiple times for multiple zones (optional)").Default("").StringsVar(&cfg.InMemoryZones)
 	app.Flag("pdns-server", "When using the PowerDNS/PDNS provider, specify the URL to the pdns server (required when --provider=pdns)").Default(defaultConfig.PDNSServer).StringVar(&cfg.PDNSServer)

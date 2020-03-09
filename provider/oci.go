@@ -26,6 +26,7 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	yaml "gopkg.in/yaml.v2"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	"github.com/kubernetes-sigs/external-dns/endpoint"
 	"github.com/kubernetes-sigs/external-dns/plan"
@@ -58,6 +59,7 @@ type OCIProvider struct {
 	domainFilter DomainFilter
 	zoneIDFilter ZoneIDFilter
 	dryRun       bool
+	domainMode   bool
 }
 
 // ociDNSClient is the subset of the OCI DNS API required by the OCI Provider.
@@ -65,6 +67,7 @@ type ociDNSClient interface {
 	ListZones(ctx context.Context, request dns.ListZonesRequest) (response dns.ListZonesResponse, err error)
 	GetZoneRecords(ctx context.Context, request dns.GetZoneRecordsRequest) (response dns.GetZoneRecordsResponse, err error)
 	PatchZoneRecords(ctx context.Context, request dns.PatchZoneRecordsRequest) (response dns.PatchZoneRecordsResponse, err error)
+    PatchRRSet(ctx context.Context, request dns.PatchRRSetRequest) (response dns.PatchRRSetResponse, err error)
 }
 
 // LoadOCIConfig reads and parses the OCI ExternalDNS config file at the given
@@ -83,7 +86,7 @@ func LoadOCIConfig(path string) (*OCIConfig, error) {
 }
 
 // NewOCIProvider initialises a new OCI DNS based Provider.
-func NewOCIProvider(cfg OCIConfig, domainFilter DomainFilter, zoneIDFilter ZoneIDFilter, dryRun bool) (*OCIProvider, error) {
+func NewOCIProvider(cfg OCIConfig, domainFilter DomainFilter, zoneIDFilter ZoneIDFilter, dryRun bool, domainMode bool) (*OCIProvider, error) {
 	var client ociDNSClient
 	client, err := dns.NewDnsClientWithConfigurationProvider(common.NewRawConfigurationProvider(
 		cfg.Auth.TenancyID,
@@ -103,6 +106,7 @@ func NewOCIProvider(cfg OCIConfig, domainFilter DomainFilter, zoneIDFilter ZoneI
 		domainFilter: domainFilter,
 		zoneIDFilter: zoneIDFilter,
 		dryRun:       dryRun,
+		domainMode:   domainMode,
 	}, nil
 }
 
@@ -235,13 +239,33 @@ func (p *OCIProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) e
 		return nil
 	}
 
-	for zoneID, ops := range opsByZone {
-		if _, err := p.client.PatchZoneRecords(ctx, dns.PatchZoneRecordsRequest{
-			CompartmentId:           &p.cfg.CompartmentID,
-			ZoneNameOrId:            &zoneID,
-			PatchZoneRecordsDetails: dns.PatchZoneRecordsDetails{Items: ops},
-		}); err != nil {
-			return err
+	for zoneID, zoneOps := range opsByZone {
+		if p.domainMode {
+			errList := []error{}
+			for domain, byRType := range operationsByDomainAndRRType(zoneOps) {
+				for rType, domainOps := range byRType {
+					_, err := p.client.PatchRRSet(ctx, dns.PatchRRSetRequest{
+						ZoneNameOrId:      &zoneID,
+						Domain:            &domain,
+						Rtype:             &rType,
+						PatchRrSetDetails: dns.PatchRrSetDetails{Items: domainOps},
+					})
+					if err != nil {
+						errList = append(errList, errors.Wrap(err, "patching RRSet"))
+					}
+				}
+			}
+			if len(errList) > 0 {
+				return utilerrors.NewAggregate(errList)
+			}
+		} else {
+			if _, err := p.client.PatchZoneRecords(ctx, dns.PatchZoneRecordsRequest{
+				CompartmentId:           &p.cfg.CompartmentID,
+				ZoneNameOrId:            &zoneID,
+				PatchZoneRecordsDetails: dns.PatchZoneRecordsDetails{Items: zoneOps},
+			}); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -297,4 +321,20 @@ func operationsByZone(zones map[string]dns.ZoneSummary, ops []dns.RecordOperatio
 	}
 
 	return changes
+}
+
+func operationsByDomainAndRRType(ops []dns.RecordOperation) map[string]map[string][]dns.RecordOperation {
+	result := make(map[string]map[string][]dns.RecordOperation)
+	for _, op := range ops {
+		if _, ok := result[*op.Domain]; !ok {
+			result[*op.Domain] = make(map[string][]dns.RecordOperation)
+		}
+
+		if _, ok := result[*op.Domain][*op.Rtype]; !ok {
+			result[*op.Domain][*op.Rtype] = []dns.RecordOperation{}
+		}
+
+		result[*op.Domain][*op.Rtype] = append(result[*op.Domain][*op.Rtype], op)
+	}
+	return result
 }

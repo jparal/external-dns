@@ -212,7 +212,7 @@ func main() {
 		var config *provider.OCIConfig
 		config, err = provider.LoadOCIConfig(cfg.OCIConfigFile)
 		if err == nil {
-			p, err = provider.NewOCIProvider(*config, domainFilter, zoneIDFilter, cfg.DryRun)
+			p, err = provider.NewOCIProvider(*config, domainFilter, zoneIDFilter, cfg.DryRun, cfg.OCIDomainMode)
 		}
 	case "rfc2136":
 		p, err = provider.NewRfc2136Provider(cfg.RFC2136Host, cfg.RFC2136Port, cfg.RFC2136Zone, cfg.RFC2136Insecure, cfg.RFC2136TSIGKeyName, cfg.RFC2136TSIGSecret, cfg.RFC2136TSIGSecretAlg, cfg.RFC2136TAXFR, domainFilter, cfg.DryRun, nil)

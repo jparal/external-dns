@@ -100,7 +100,7 @@ func (c *mockOCIDNSClient) PatchZoneRecords(ctx context.Context, request dns.Pat
 }
 
 // newOCIProvider creates an OCI provider with API calls mocked out.
-func newOCIProvider(client ociDNSClient, domainFilter DomainFilter, zoneIDFilter ZoneIDFilter, dryRun bool) *OCIProvider {
+func newOCIProvider(client ociDNSClient, domainFilter DomainFilter, zoneIDFilter ZoneIDFilter, dryRun bool, domainMode bool) *OCIProvider {
 	return &OCIProvider{
 		client: client,
 		cfg: OCIConfig{
@@ -109,6 +109,7 @@ func newOCIProvider(client ociDNSClient, domainFilter DomainFilter, zoneIDFilter
 		domainFilter: domainFilter,
 		zoneIDFilter: zoneIDFilter,
 		dryRun:       dryRun,
+		domainMode:   domainMode,
 	}
 }
 
@@ -640,6 +641,7 @@ func TestOCIApplyChanges(t *testing.T) {
 		records           map[string][]dns.Record
 		changes           *plan.Changes
 		dryRun            bool
+		domainMode        bool
 		err               error
 		expectedEndpoints []*endpoint.Endpoint
 	}{
@@ -753,6 +755,7 @@ func TestOCIApplyChanges(t *testing.T) {
 				)},
 			},
 			dryRun: true,
+			domainMode: false,
 			expectedEndpoints: []*endpoint.Endpoint{endpoint.NewEndpointWithTTL(
 				"foo.foo.com",
 				endpoint.RecordTypeA,
@@ -828,6 +831,7 @@ func TestOCIApplyChanges(t *testing.T) {
 				NewDomainFilter([]string{""}),
 				NewZoneIDFilter([]string{""}),
 				tc.dryRun,
+				tc.domainMode,
 			)
 			err := provider.ApplyChanges(context.Background(), tc.changes)
 			require.Equal(t, tc.err, err)

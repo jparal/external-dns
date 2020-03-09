@@ -19,8 +19,8 @@ WORKDIR /github.com/kubernetes-sigs/external-dns
 
 COPY . .
 RUN go mod vendor && \
-    make test && \
     make build
+#    make test && \
 
 # final image
 FROM alpine:3.10
